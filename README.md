@@ -16,7 +16,7 @@
 - **中文全流程** — 定理标签、目录标题、参考文献标题均为中文；中文字体（macOS: Songti SC / Heiti SC / FangSong）
 - **参考文献** — natbib 编号制 + `plainnat-doi.bst`（DOI 超链接支持），引用格式 `[1]`, `[1,2,5]`
 - **特殊环境** — introduction（章节导读 double-column 框）、problemset（章后习题，装饰标题）
-- **公式编号** — `(1.1)`, `(1.2)` 按章编号；`$$...$$` 自动转为 `\begin{equation}...\end{equation}`
+- **公式编号** — 仅带 `{#eq-xxx}` 标签的公式编号，无标签公式不编号；编号格式 `(1.1)`, `(1.2)` 按章编号；交叉引用自动加括号
 
 ### HTML 输出（辅助）
 
@@ -34,13 +34,12 @@
 
 ```
 quarto-elegantbook-pdf/
-├── _quarto.yml                          # 项目配置
+├── _quarto.yml                          # 项目配置（含标题页内嵌 LaTeX）
 ├── _variables.yml                       # 模板变量（ORCID, GitHub, PGP 等）
 ├── references.bib                       # 参考文献数据库
-├── title-info.tex                       # 标题页定制（副标题、机构、版本）
 ├── styles.css                           # HTML 布局 CSS
 ├── theme.scss / theme-dark.scss         # HTML 亮色/暗色主题
-├── div-environments.lua                 # Lua 过滤器（环境映射 + 页码控制 + 公式编号）
+├── div-environments.lua                 # Lua 过滤器（环境映射 + 页码控制）
 ├── images/
 │   ├── cover.jpg                        # 封面图片
 │   ├── logo-blue.png                    # ElegantBook logo
@@ -53,11 +52,12 @@ quarto-elegantbook-pdf/
 └── _extensions/
     ├── elegantbook/                     # 格式扩展（核心）
     │   ├── _extension.yml              # 扩展元数据 & LaTeX 配置
-    │   ├── div-environments.lua        # 扩展内 Lua 过滤器（简化版）
+    │   ├── div-environments.lua        # 扩展内 Lua 过滤器（定理环境）
+    │   ├── math-no-auto-number.lua     # Lua 过滤器（公式编号控制：仅标签公式编号）
     │   ├── orcidlink.sty               # ORCID 图标 LaTeX 包
     │   ├── plainnat-doi.bst            # BibTeX 样式（DOI 支持）
     │   ├── includes/
-    │   │   ├── header-includes.tex     # LaTeX 导言区（500 行，颜色/字体/定理/页眉页脚/标题页）
+    │   │   ├── header-includes.tex     # LaTeX 导言区（颜色/字体/定理/页眉页脚/标题页/公式引用括号）
     │   │   └── before-body.tex         # 文档体起始定义（定理环境重定义）
     │   └── partials/
     │       ├── title.tex               # 标题元数据模板
@@ -127,7 +127,10 @@ format:
     filters:
       - div-environments.lua
     include-in-header:
-      - title-info.tex
+      - text: |
+          \subtitle{你的副标题}
+          \institute{你的机构全称}
+          \version{v1.0}
 
   html:
     lang: zh
@@ -137,12 +140,14 @@ format:
 
 ### 标题页定制
 
-创建 `title-info.tex`（放在项目根目录）：
+在 `_quarto.yml` 的 `elegantbook-pdf` 格式下，通过 `include-in-header` 内嵌 LaTeX 代码设置副标题、机构和版本：
 
-```latex
-\subtitle{你的副标题}
-\institute{你的机构全称}
-\version{v1.0}
+```yaml
+include-in-header:
+  - text: |
+      \subtitle{你的副标题}
+      \institute{你的机构全称}
+      \version{v1.0}
 ```
 
 ### 编译
@@ -262,11 +267,33 @@ $$ -\frac{\partial V}{\partial t} = \sup_{u \in U} \left\{ f(t,x,u) + \mathcal{L
 | 目录页码 | `\maketitle` 末尾设置 `\pagenumbering{Roman}`；文档体起始处 Lua filter 注入 `\pagenumbering{arabic}` |
 | 目录深度 | `_quarto.yml` → `toc-depth: 2`（章 + 节） |
 | 章奇数页起始 | 重定义 `\cleardoublepage` 覆盖 `oneside` 下的默认行为 |
-| 公式编号 | `\numberwithin{equation}{chapter}` |
+| 公式编号 | `\numberwithin{equation}{chapter}` + Lua 过滤器（仅标签公式编号） |
+| 公式引用括号 | `header-includes.tex` 中重定义 `\ref` → 检测 `eq-` 前缀后包裹括号 |
 | 参考文献页眉 | `before-bib.tex` 清除 running header |
 | Bio 页无页码 | `after-body.tex` 开头 `\pagestyle{empty}` |
 | 标题页日期 | 使用 `\zhtoday`（ctex 提供的中文日期，如 "2026 年 6 月 14 日"） |
 | 标题页封面与色条 | `\nointerlineskip` 消除基线间距 |
+
+## 公式编号控制
+
+Quarto 默认对所有 display math（`$$...$$`）使用 `\begin{equation}` 环境（即全部编号）。本扩展通过 Lua 过滤器 `math-no-auto-number.lua` 实现：**仅带 `{#eq-xxx}` 标签的公式编号，无标签公式不编号**。
+
+```markdown
+$$ E = mc^2 $$                    <!-- 无编号 -->
+
+$$ \nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0} $$ {#eq-maxwell}  <!-- 编号 (1.1) -->
+```
+
+公式交叉引用通过 `@eq-xxx` 语法，输出自动带括号：
+
+```markdown
+由 @eq-maxwell 可知...           <!-- PDF: 由 (1.1) 可知... -->
+```
+
+**技术实现**：
+
+- `math-no-auto-number.lua` — 在 Pandoc AST 阶段拦截无标识符的 DisplayMath，转为 `RawInline("latex", "\\[...\\]")`
+- `header-includes.tex` — 重定义 `\ref`（通过 xstring 检测 `eq-` 前缀）手动包裹括号，解决 Quarto 不使用 `\eqref{}` 的已知缺陷
 
 ## 颜色主题
 
@@ -303,12 +330,14 @@ Windows / Linux 用户需改为：
 
 ### 修改标题页信息
 
-编辑项目根目录 `title-info.tex`：
+直接编辑 `_quarto.yml` 中 `elegantbook-pdf` 格式下的 `include-in-header` 内嵌 LaTeX：
 
-```latex
-\subtitle{新的副标题}
-\institute{新的机构名}
-\version{v2.0}
+```yaml
+include-in-header:
+  - text: |
+      \subtitle{新的副标题}
+      \institute{新的机构名}
+      \version{v2.0}
 ```
 
 ### 修改变量
@@ -329,7 +358,7 @@ years: "2026"
 
 `geometry`, `xcolor`, `titlesec`, `fancyhdr`, `tcolorbox`, `enumitem`, `tikz`,
 `bbding`, `manfnt`, `adforn`, `multicol`, `amsmath`, `amsthm`, `caption`,
-`booktabs`, `multirow`, `natbib`, `etoolbox`, `ctex`, `hyperref`, `orcidlink`
+`booktabs`, `multirow`, `natbib`, `etoolbox`, `ctex`, `hyperref`, `orcidlink`, `xstring`
 
 ### 字体
 

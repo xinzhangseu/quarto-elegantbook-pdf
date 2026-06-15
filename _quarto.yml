@@ -94,4 +94,8 @@ format:
     filters:
       - div-environments.lua
     include-in-header:
-      - title-info.tex
+      - text: |
+          % Title page customization — ElegantBook style
+          \subtitle{Your Subtitle Here}
+          \institute{Your University, Your Department}
+          \version{v1.0}
